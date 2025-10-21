@@ -1,0 +1,51 @@
+version: 0.2
+
+env:
+  variables:
+    STACK_NAME: "application-ec2-stack"
+    TEMPLATE_FILE: "ec2.yaml"
+    PARAMETERS: | 
+                ParameterKey=ECC2AMIID,ParameterValue=vpc-0d5d4b0f4e6f895ad
+                ParameterKey=EC2KeyPairName,ParameterValue=andrew-keypair
+                ParameterKey=EC2InstanceType,ParameterValue=t2.micro
+                ParameterKey=SubnetID,ParameterValue=subnet-05a218529c1a9dc62 
+                ParameterKey=SecurityGroupID,ParameterValue=sg-0a1b2c3d4e5f6g7h8
+
+
+phases:
+  install:
+    commands:
+      - echo "Installing AWS CLI v2..."
+      - curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+      - unzip awscliv2.zip
+      - sudo ./aws/install --update
+      - aws --version
+
+  pre_build:
+    commands:
+      - echo "Checking AWS CLI version..."
+      - aws --version
+      - echo "Validating CloudFormation template..."
+      - aws cloudformation validate-template --template-body file://${TEMPLATE_FILE}
+
+  build:
+    commands:
+      - |
+        if [ "$ACTION" == "deploy" ]; then
+          echo "Deploying CloudFormation stack: $STACK_NAME..."
+          aws cloudformation deploy --stack-name $STACK_NAME --template-file ${TEMPLATE_FILE} --parameter-overrides $(echo "${PARAMETERS}" | tr '\n' ' ') --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM
+
+        elif [ "$ACTION" == "destroy" ]; then
+          echo "Destroying CloudFormation stack: $STACK_NAME..."
+          aws cloudformation delete-stack --stack-name $STACK_NAME
+          echo "Waiting for stack deletion to complete..."
+          aws cloudformation wait stack-delete-complete --stack-name $STACK_NAME
+          
+        else
+          echo "Invalid ACTION parameter. Use 'deploy' or 'destroy'."
+          exit 1
+        fi
+
+  post_build:
+    commands:
+      - echo "CloudFormation operation ($ACTION) completed successfully."
